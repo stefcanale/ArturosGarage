@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Arturo's Garage - Voice Mode</title>
+    <title>Arturo's Garage</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -17,32 +17,38 @@
     </script>
 
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #ecfdf5; }
-        /* Animación suave para cuando habla */
-        .pulse-ring {
-            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
-            animation: pulse-green 2s infinite cubic-bezier(0.66, 0, 0, 1);
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #f1f5f9; /* Gris muy suave de fondo */
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
         }
-        @keyframes pulse-green {
-            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-            70% { box-shadow: 0 0 0 20px rgba(16, 185, 129, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        /* Efecto de onda al hablar */
+        .mic-listening {
+            animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
     </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-4">
-    <div id="root" class="w-full"></div>
+<body>
+    <div id="root" class="w-full h-full flex justify-center items-center p-4"></div>
 
     <script type="text/babel" data-type="module">
         import { GoogleGenerativeAI } from "@google/generative-ai";
         const { useState, useEffect, useRef } = React;
         const { createRoot } = ReactDOM;
 
-        // --- TU CONFIGURACIÓN ---
         const SYSTEM_PROMPT = `
-            You are "Arturo", a friendly mechanic helping with English. 
-            Keep answers short and conversational (1-2 sentences). 
-            Correct grammar gently if needed.
+            You are "Arturo", a friendly mechanic English tutor. 
+            Keep answers conversational, short, and helpful. 
+            Correct grammar mistakes gently.
         `;
 
         const App = () => {
@@ -50,136 +56,127 @@
             const [showKey, setShowKey] = useState(!localStorage.getItem('gemini_api_key'));
             const [tempKey, setTempKey] = useState('');
             
-            // Estados de la conversación
             const [isListening, setIsListening] = useState(false);
             const [isThinking, setIsThinking] = useState(false);
-            const [transcript, setTranscript] = useState("Tap the green button to start talking...");
-            const [history, setHistory] = useState([
-                { role: 'model', parts: [{ text: "Hi! I'm Arturo. Ready to practice?" }] }
-            ]);
-
+            const [transcript, setTranscript] = useState("Hi! Tap the mic to start talking.");
+            const [history, setHistory] = useState([]);
             const recognitionRef = useRef(null);
 
-            // Guardar API Key
             const handleSaveKey = () => {
                 if(tempKey) { localStorage.setItem('gemini_api_key', tempKey); setApiKey(tempKey); setShowKey(false); }
             };
 
-            // Función para hablar (Text to Speech)
             const speak = (text) => {
+                window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = 'en-US';
-                utterance.rate = 0.9;
                 window.speechSynthesis.speak(utterance);
             };
 
-            // Función para enviar a Gemini
             const sendToGemini = async (text) => {
                 setIsThinking(true);
                 try {
                     const genAI = new GoogleGenerativeAI(apiKey);
                     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-                    
                     const chat = model.startChat({
                         history: [
                             { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
-                            { role: "model", parts: [{ text: "Ok, I'm ready." }] },
+                            { role: "model", parts: [{ text: "Understood." }] },
                             ...history
                         ]
                     });
-
                     const result = await chat.sendMessage(text);
                     const response = result.response.text();
-                    
                     setHistory(prev => [...prev, { role: 'user', parts: [{ text }] }, { role: 'model', parts: [{ text: response }] }]);
                     setTranscript(response);
-                    speak(response); // Arturo habla
-                } catch (error) {
-                    setTranscript("Error: Check API Key connection.");
-                }
+                    speak(response);
+                } catch (error) { setTranscript("Connection error. Check API Key."); }
                 setIsThinking(false);
             };
 
-            // Configurar micrófono
             const toggleMic = () => {
                 if (!apiKey) { setShowKey(true); return; }
-                
-                if (isListening) {
-                    recognitionRef.current?.stop();
-                    setIsListening(false);
-                    return;
-                }
+                if (isListening) { recognitionRef.current?.stop(); setIsListening(false); return; }
 
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
                 if (!SpeechRecognition) { alert("Use Chrome/Safari"); return; }
-
                 const recognition = new SpeechRecognition();
-                recognition.lang = 'en-US';
-                recognition.continuous = false;
-                recognition.interimResults = false;
-
-                recognition.onstart = () => { setIsListening(true); setTranscript("Listening..."); };
+                recognition.lang = 'en-US'; 
+                recognition.onstart = () => { setIsListening(true); setTranscript("I'm listening..."); };
                 recognition.onend = () => setIsListening(false);
-                recognition.onresult = (event) => {
-                    const text = event.results[0][0].transcript;
-                    setTranscript(`You said: "${text}"`);
+                recognition.onresult = (e) => {
+                    const text = e.results[0][0].transcript;
+                    setTranscript(`"${text}"`);
                     sendToGemini(text);
                 };
-
                 recognitionRef.current = recognition;
                 recognition.start();
             };
 
             return (
-                <div className="w-full max-w-lg mx-auto flex flex-col gap-6">
+                <div className="w-full max-w-md bg-white h-auto max-h-[90vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col relative border-4 border-white ring-1 ring-gray-100">
                     
-                    {/* Modal API Key */}
+                    {/* Modal Key */}
                     {showKey && (
-                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                            <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-xl">
-                                <h3 className="font-bold text-lg mb-2">Setup Key</h3>
-                                <input type="password" className="w-full border p-3 rounded-lg mb-4" placeholder="Gemini API Key" value={tempKey} onChange={e=>setTempKey(e.target.value)} />
-                                <button onClick={handleSaveKey} className="w-full bg-emerald-600 text-white py-3 rounded-lg font-bold">Save & Start</button>
-                            </div>
+                        <div className="absolute inset-0 bg-white/95 z-50 flex flex-col items-center justify-center p-6 text-center backdrop-blur-md">
+                            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center text-3xl mb-4">🔑</div>
+                            <h3 className="font-bold text-xl text-gray-800 mb-2">Setup Required</h3>
+                            <p className="text-gray-500 mb-4 text-sm">Paste your Gemini API Key to start the engine.</p>
+                            <input type="password" value={tempKey} onChange={e=>setTempKey(e.target.value)} className="w-full bg-gray-50 border border-gray-200 p-4 rounded-xl mb-4 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="API Key..." />
+                            <button onClick={handleSaveKey} className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-emerald-200">Start Engine</button>
                         </div>
                     )}
 
                     {/* Header */}
-                    <div className="flex items-center gap-4 px-2">
-                        <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-2xl shadow-sm border border-emerald-200">
+                    <div className="bg-emerald-50 p-6 pb-10 text-center relative">
+                        <div className="w-20 h-20 bg-white rounded-full mx-auto flex items-center justify-center text-4xl shadow-md mb-3 border-4 border-emerald-100">
                             👨‍🔧
                         </div>
-                        <div>
-                            <h1 className="text-2xl font-black text-gray-800 tracking-tight">Arturo's Garage</h1>
-                            <p className="text-emerald-600 font-medium text-sm">Your English mechanic friend</p>
-                        </div>
-                        <button onClick={() => setShowKey(true)} className="ml-auto text-gray-400">🔑</button>
+                        <h1 className="text-2xl font-black text-gray-800 tracking-tight">Arturo's Garage</h1>
+                        <p className="text-emerald-700 font-medium text-sm">English Mechanic Tutor</p>
+                        <button onClick={() => setShowKey(true)} className="absolute top-4 right-4 text-emerald-300 hover:text-emerald-600"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg></button>
                     </div>
 
-                    {/* Main Card (Action) */}
-                    <div className="bg-white rounded-3xl p-6 shadow-xl border border-emerald-50 text-center">
-                        <h2 className="text-xl font-bold text-gray-800 mb-2">Ready to talk?</h2>
-                        <p className="text-gray-500 mb-6 text-sm">Arturo is in his workshop, ready for a chat.</p>
-                        
+                    {/* Chat Area */}
+                    <div className="flex-1 bg-white relative -mt-6 rounded-t-[2rem] p-6 flex flex-col items-center justify-center text-center overflow-y-auto">
+                        {isThinking ? (
+                            <div className="space-y-2 animate-pulse">
+                                <div className="text-4xl">⚙️</div>
+                                <p className="text-gray-400 font-medium">Checking engine...</p>
+                            </div>
+                        ) : (
+                            <div className="prose">
+                                <p className="text-xl text-gray-700 font-medium leading-relaxed">
+                                    {transcript}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Footer Actions */}
+                    <div className="p-6 bg-white border-t border-gray-50">
                         <button 
                             onClick={toggleMic}
-                            className={`w-full py-6 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-3 shadow-lg ${
+                            className={`w-full py-5 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-3 shadow-xl transform active:scale-95 ${
                                 isListening 
-                                ? 'bg-red-500 text-white pulse-ring' 
-                                : isThinking
-                                    ? 'bg-gray-100 text-gray-400 cursor-wait'
-                                    : 'bg-emerald-500 hover:bg-emerald-600 text-white hover:-translate-y-1'
+                                ? 'bg-red-500 text-white mic-listening shadow-red-200' 
+                                : 'bg-emerald-600 text-white shadow-emerald-200 hover:bg-emerald-700'
                             }`}
                         >
                             {isListening ? (
                                 <><span>🛑</span> Stop Listening</>
-                            ) : isThinking ? (
-                                <><span>⚙️</span> Thinking...</>
                             ) : (
-                                <><span>🎙️</span> Start Conversation</>
+                                <><span>🎙️</span> Start Talking</>
                             )}
                         </button>
+                        <p className="text-center text-xs text-gray-300 mt-4">Powered by Gemini AI</p>
                     </div>
+                </div>
+            );
+        };
 
-                    {/* Helper Card (Transcript) */}
-                    <div className="bg-white rounded-3xl p-6 shadow-lg border border-emerald-50 min-h
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
